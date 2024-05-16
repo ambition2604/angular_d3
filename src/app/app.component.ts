@@ -19,6 +19,12 @@ interface EmployeeSchedule {
   endTime: string;
 }
 
+interface Group {
+  groupName: string;
+  employees: Employee[];
+  data: EmployeeSchedule[][];
+}
+
 @Component({
   selector: 'app-root',
   standalone: true,
@@ -26,18 +32,29 @@ interface EmployeeSchedule {
   styleUrls: ['./app.component.css']
 })
 export class AppComponent implements OnInit {
-  // Your component logic here
-  employees: Employee[] = [
-    { employeeCode: 'E0', startTime: '8:00', endTime: '17:00' },
-    { employeeCode: 'E1', startTime: '8:00', endTime: '11:00' },
-    { employeeCode: 'E2', startTime: '10:00', endTime: '16:00' }
-  ];
-
   minTime = 5;
   maxTime = 21;
   pendingChanges: EmployeeSchedule[] = [];
-  data: EmployeeSchedule[][] = [];
-  processedEmployees: ProcessedEmployee[] = [];
+  groups: Group[] = [
+    {
+      groupName: 'Group 1',
+      employees: [
+        { employeeCode: 'E0', startTime: '8:00', endTime: '17:00' },
+        { employeeCode: 'E1', startTime: '8:00', endTime: '11:00' },
+        { employeeCode: 'E2', startTime: '10:00', endTime: '16:00' }
+      ],
+      data: []
+    },
+    {
+      groupName: 'Group 2',
+      employees: [
+        { employeeCode: 'E3', startTime: '9:00', endTime: '18:00' },
+        { employeeCode: 'E4', startTime: '7:00', endTime: '15:00' },
+        { employeeCode: 'E5', startTime: '11:00', endTime: '19:00' }
+      ],
+      data: []
+    }
+  ];
 
   constructor() { }
 
@@ -47,31 +64,41 @@ export class AppComponent implements OnInit {
   }
 
   processData(): void {
-    this.processedEmployees = this.employees.map(emp => ({
-      employeeCode: emp.employeeCode,
-      startTime: +emp.startTime.split(':').reduce((h, m) => (Number(h) * 60 + Number(m)).toString()),
-      endTime: +emp.endTime.split(':').reduce((h, m) => (Number(h) * 60 + Number(m)).toString()),
-    }));
-
-    this.processedEmployees.sort((a, b) => a.startTime - b.startTime || a.endTime - b.endTime);
-
-    const lines: ProcessedEmployee[][] = [];
-    for (const emp of this.processedEmployees) {
-      const line = lines.find(line => line[line.length - 1].endTime <= emp.startTime);
-      if (line) {
-        line.push(emp);
-      } else {
-        lines.push([emp]);
-      }
-    }
-
-    this.data = lines.map(line =>
-      line.map(emp => ({
+    this.groups.forEach(group => {
+      const processedEmployees = group.employees.map(emp => ({
         employeeCode: emp.employeeCode,
-        startTime: `${Math.floor(emp.startTime / 60)}:${emp.startTime % 60 === 0 ? '00' : (emp.startTime % 60).toString()}`,
-        endTime: `${Math.floor(emp.endTime / 60)}:${emp.endTime % 60 === 0 ? '00' : (emp.endTime % 60).toString()}`,
-      }))
-    );
+        startTime: emp.startTime.split(':').reduce((h, m) => (Number(h) * 60 + Number(m)).toString()),
+        endTime: emp.endTime.split(':').reduce((h, m) => (Number(h) * 60 + Number(m)).toString()),
+      }));
+
+      processedEmployees.sort((a: any, b: any) => a.startTime - b.startTime || a.endTime - b.endTime);
+
+      const lines: ProcessedEmployee[][] = [];
+      for (const emp of processedEmployees) {
+        const line = lines.find((line: any) => line[line.length - 1].endTime <= emp.startTime);
+        if (line) {
+          line.push({
+            employeeCode: emp.employeeCode,
+            startTime: Number(emp.startTime),
+            endTime: Number(emp.endTime),
+          });
+        } else {
+          lines.push([{
+            employeeCode: emp.employeeCode,
+            startTime: Number(emp.startTime),
+            endTime: Number(emp.endTime),
+          }]);
+        }
+      }
+
+      group.data = lines.map(line =>
+        line.map(emp => ({
+          employeeCode: emp.employeeCode,
+          startTime: `${Math.floor(emp.startTime / 60)}:${emp.startTime % 60 === 0 ? '00' : (emp.startTime % 60).toString()}`,
+          endTime: `${Math.floor(emp.endTime / 60)}:${emp.endTime % 60 === 0 ? '00' : (emp.endTime % 60).toString()}`,
+        }))
+      );
+    });
   }
 
   updateData(draggedBlock: EmployeeSchedule): void {
@@ -80,13 +107,13 @@ export class AppComponent implements OnInit {
 
   saveChanges(): void {
     this.pendingChanges.forEach(change => {
-      const updatedEmployees: Employee[] = this.data.flat().map(emp => ({
-        employeeCode: emp.employeeCode,
-        startTime: `${Math.floor(parseInt(emp.startTime.split(':')[0]))}:${emp.startTime.split(':')[1]}`,
-        endTime: `${Math.floor(parseInt(emp.endTime.split(':')[0]))}:${emp.endTime.split(':')[1]}`
-      }));
-
-      this.employees = updatedEmployees;
+      this.groups.forEach(group => {
+        group.employees = group.data.flat().map(emp => ({
+          employeeCode: emp.employeeCode,
+          startTime: `${Math.floor(parseInt(emp.startTime.split(':')[0]))}:${emp.startTime.split(':')[1]}`,
+          endTime: `${Math.floor(parseInt(emp.endTime.split(':')[0]))}:${emp.endTime.split(':')[1]}`
+        }));
+      });
       this.processData();
     });
 
@@ -96,106 +123,149 @@ export class AppComponent implements OnInit {
 
   drawChart(): void {
     d3.select("#chart").html("");
-    d3.select("#chart").style("display", "flex");
+    d3.select("#chart").style("display", "block");
 
-    const groupSvg = d3.select("#chart").insert("svg", ":first-child")
-      .attr("width", 100)
-      .attr("height", this.data.length * 30 + 50);
+    const boxWidth = 60; // Increase the box width
+    const boxHeight = 40; // Increase the box height
 
-    groupSvg.append("text")
-      .attr("x", 50)
-      .attr("y", this.data.length * 15 + 40)
-      .text("Group 1")
-      .attr("font-family", "sans-serif")
-      .attr("font-size", "20px")
-      .attr("fill", "black")
-      .attr("text-anchor", "middle");
+    const chartContainer = d3.select("#chart")
+      .append("svg")
+      .attr("width", (this.maxTime - this.minTime) * boxWidth + 150) // Extra width for labels and group names
+      .attr("height", this.groups.reduce((acc, group) => acc + group.data.length, 0) * boxHeight + this.groups.length * 70 + 50); // Adjust height to fit all groups
 
-    const svg = d3.select("#chart").append("svg")
-      .attr("width", (this.maxTime - this.minTime) * 40)
-      .attr("height", this.data.length * 30 + 50);
+    // Add a header for the time labels
+    const headerGroup = chartContainer.append("g")
+      .attr("transform", "translate(150, 0)");
 
+    headerGroup.append("rect")
+      .attr("x", 0)
+      .attr("y", 0)
+      .attr("width", (this.maxTime - this.minTime) * boxWidth)
+      .attr("height", boxHeight)
+      .attr("fill", "lightgray")
+      .attr("stroke", "black");
+
+    // Add time labels with borders
     for (let i = this.minTime; i <= this.maxTime; i++) {
-      svg.append("line")
-        .attr("x1", (i - this.minTime) * 40)
-        .attr("y1", 0)
-        .attr("x2", (i - this.minTime) * 40)
-        .attr("y2", this.data.length * 30 + 50)
-        .attr("stroke", "black")
-        .attr("stroke-width", 1);
-    }
-
-    for (let i = 0; i <= this.data.length; i++) {
-      svg.append("line")
-        .attr("x1", 0)
-        .attr("y1", i * 30 + 50)
-        .attr("x2", (this.maxTime - this.minTime) * 40)
-        .attr("y2", i * 30 + 50)
-        .attr("stroke", "black")
-        .attr("stroke-width", 1);
-    }
-
-    for (let i = this.minTime; i <= this.maxTime; i++) {
-      svg.append("text")
-        .attr("x", (i - this.minTime) * 40 + 20)
-        .attr("y", 30)
+      headerGroup.append("text")
+        .attr("x", (i - this.minTime) * boxWidth + boxWidth / 2)
+        .attr("y", boxHeight / 2 + 5)
         .attr("text-anchor", "middle")
         .text(`${i}:00`);
+
+      headerGroup.append("line")
+        .attr("x1", (i - this.minTime) * boxWidth)
+        .attr("y1", 0)
+        .attr("x2", (i - this.minTime) * boxWidth)
+        .attr("y2", boxHeight)
+        .attr("stroke", "black")
+        .attr("stroke-width", 1);
     }
 
-    const rows = svg.selectAll("g")
-      .data(this.data)
-      .enter().append("g")
-      .attr("transform", (d, i) => `translate(0,${i * 30 + 50})`);
+    let currentY = boxHeight; // Start position for the first group
 
-    rows.each((rowData, i, nodes) => {
-      const row = d3.select(nodes[i]);
-      const rects = row.selectAll("rect")
-        .data(rowData)
-        .enter().append("rect")
-        .attr("x", d => (parseInt(d.startTime.split(':')[0]) - this.minTime) * 40)
-        .attr("width", d => (parseInt(d.endTime.split(':')[0]) - parseInt(d.startTime.split(':')[0])) * 40)
-        .attr("height", 20)
-        .attr("fill", "steelblue");
+    this.groups.forEach(group => {
+      // Create a class name that is a valid CSS selector
+      const groupClass = group.groupName.replace(/\s+/g, '_');
 
-      const texts = row.selectAll("text")
-        .data(rowData)
-        .enter().append("text")
-        .attr("x", d => (parseInt(d.startTime.split(':')[0]) - this.minTime) * 40 + 5)
-        .attr("y", 15)
-        .text(d => d.employeeCode);
+      // Add group name with border
+      chartContainer.append("rect")
+        .attr("x", 0)
+        .attr("y", currentY)
+        .attr("width", 150)
+        .attr("height", group.data.length * boxHeight)
+        .attr("fill", "none")
+        .attr("stroke", "black");
 
-      const self = this;
+      chartContainer.append("text")
+        .attr("x", 75)
+        .attr("y", currentY + (group.data.length * boxHeight) / 2) // Center the group name vertically
+        .text(group.groupName)
+        .attr("font-family", "sans-serif")
+        .attr("font-size", "20px")
+        .attr("fill", "black")
+        .attr("text-anchor", "middle");
 
-      rects.call(d3.drag<SVGRectElement, EmployeeSchedule>()
-        .on("start", function (event: any) {
-          d3.select(this).raise().classed("active", true);
-        })
-        .on("drag", function (event: any, d: EmployeeSchedule) {
-          const x = event.x;
-          const width = parseInt(d3.select(this).attr("width") || '0');
-          const startX = parseInt(d3.select(this).attr("x") || '0');
-          const endX = startX + width;
-          if (Math.abs(x - startX) < Math.abs(x - endX)) {
-            const newStart = Math.max(0, Math.min(endX, x));
-            d3.select(this).attr("x", newStart);
-            d3.select(this).attr("width", endX - newStart);
-            d.startTime = `${Math.floor(newStart / 40) + self.minTime}:00`;
-            texts.filter(t => t.employeeCode === d.employeeCode)
-              .attr("x", newStart + 5);
-          } else {
-            const newEnd = Math.max(startX, Math.min(800, x));
-            d3.select(this).attr("width", newEnd - startX);
-            d.endTime = `${Math.floor(newEnd / 40) + self.minTime}:00`;
-            texts.filter(t => t.employeeCode === d.employeeCode)
-              .attr("x", startX + 5);
-          }
-        })
-        .on("end", function (event: any, d: EmployeeSchedule) {
-          d3.select(this).classed("active", false);
-          self.updateData(d);
-        })
-      );
+      // Add vertical lines
+      for (let i = this.minTime; i <= this.maxTime; i++) {
+        chartContainer.append("line")
+          .attr("x1", (i - this.minTime) * boxWidth + 150)
+          .attr("y1", currentY)
+          .attr("x2", (i - this.minTime) * boxWidth + 150)
+          .attr("y2", currentY + group.data.length * boxHeight)
+          .attr("stroke", "black")
+          .attr("stroke-width", 1);
+      }
+
+      // Add horizontal lines
+      for (let i = 0; i <= group.data.length; i++) {
+        chartContainer.append("line")
+          .attr("x1", 150)
+          .attr("y1", currentY + i * boxHeight)
+          .attr("x2", (this.maxTime - this.minTime) * boxWidth + 150)
+          .attr("y2", currentY + i * boxHeight)
+          .attr("stroke", "black")
+          .attr("stroke-width", 1);
+      }
+
+      const rows = chartContainer.selectAll(`g.${groupClass}`)
+        .data(group.data)
+        .enter().append("g")
+        .attr("class", groupClass)
+        .attr("transform", (d, i) => `translate(150,${currentY + i * boxHeight})`);
+
+      rows.each((rowData, i, nodes) => {
+        const row = d3.select(nodes[i]);
+        const rects = row.selectAll("rect")
+          .data(rowData)
+          .enter().append("rect")
+          .attr("x", d => (parseInt(d.startTime.split(':')[0]) - this.minTime) * boxWidth)
+          .attr("width", d => (parseInt(d.endTime.split(':')[0]) - parseInt(d.startTime.split(':')[0])) * boxWidth)
+          .attr("height", boxHeight - 10)
+          .attr("fill", "steelblue");
+
+        const texts = row.selectAll("text")
+          .data(rowData)
+          .enter().append("text")
+          .attr("x", d => (parseInt(d.startTime.split(':')[0]) - this.minTime) * boxWidth + 5)
+          .attr("y", boxHeight / 2)
+          .text(d => d.employeeCode);
+
+        const self = this;
+
+        rects.call(d3.drag<SVGRectElement, EmployeeSchedule>()
+          .on("start", function (event: any) {
+            d3.select(this).raise().classed("active", true);
+          })
+          .on("drag", function (event: any, d: EmployeeSchedule) {
+            const x = event.x;
+            const width = parseInt(d3.select(this).attr("width") || '0');
+            const startX = parseInt(d3.select(this).attr("x") || '0');
+            const endX = startX + width;
+
+            if (Math.abs(x - startX) < Math.abs(x - endX)) {
+              const newStart = Math.max(0, Math.min(endX, x));
+              d3.select(this).attr("x", newStart);
+              d3.select(this).attr("width", endX - newStart);
+              d.startTime = `${Math.floor(newStart / boxWidth) + self.minTime}:00`;
+              row.selectAll("text").filter((t: any) => t.employeeCode === d.employeeCode)
+                .attr("x", newStart + 5);
+            } else {
+              const newEnd = Math.max(startX, Math.min(800, x));
+              d3.select(this).attr("width", newEnd - startX);
+              d.endTime = `${Math.floor(newEnd / boxWidth) + self.minTime}:00`;
+              row.selectAll("text").filter((t: any) => t.employeeCode === d.employeeCode)
+                .attr("x", startX + 5);
+            }
+          })
+          .on("end", function (event: any, d: EmployeeSchedule) {
+            d3.select(this).classed("active", false);
+            self.updateData(d);
+          })
+        );
+      });
+
+      currentY += group.data.length * boxHeight + 20; // Move down for the next group
     });
   }
 }
